@@ -1,0 +1,402 @@
+---
+title: "Projekt Time Series"
+author: "Swietłana Dąbrowska, Paweł Osikowicz, Konrad Pawlik, Wojciech Szumilak"
+date: "2026-06-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+  font-size: 18px;
+}
+</style>
+
+
+
+## Libraries
+
+```{r}
+suppressWarnings({
+  suppressMessages({
+    library(forecast)
+    library(tseries)
+    library(readxl)
+    library(astsa)
+  }) })
+```
+
+
+
+# Task 1
+
+
+
+In this task we will analyse data consisting of monthly totals of international airline passengers in years 1949 to 1960.
+We will try to fit various SARIMA models and choose the best.
+Then we will make numbers of passengers forecasts for each month until the end of 2026 using our model.
+
+
+
+```{r}
+SPKW <- read.csv("SPKW.csv")
+data <- ts(SPKW$passengers, start = c(2010, 1), frequency = 12)
+
+plot.ts(data, main = 'Number of passengers over time', col = 'navyblue', xlab = 'year', ylab = '');abline(h=mean(data), col = 'darkred', lty = 2)
+```
+```{r stacionarity tests}
+adf.test(data)
+kpss.test(data)
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+acf(na.omit(data), lag.max = 36, main = 'data')
+pacf(na.omit(data), lag.max = 36, main = '')
+```
+```{r}
+sum(is.na(data))
+```
+
+```{r}
+data_diff_12<-diff(data,lag=12)
+
+plot.ts(data_diff_12, main = 'lag-12 difference', col = 'navyblue', xlab = 'year', ylab = '');abline(h=mean(data_diff_12), col = 'darkred', lty = 2)
+par(mfrow=c(1,2))
+acf(na.omit(data_diff_12), lag.max = 36, main = 'lag-12 difference')
+pacf(na.omit(data_diff_12), lag.max = 36, main = '')
+```
+By applying a seasonal difference (lag-12), we have removed the seasonality, which sets our parameter D = 1. 
+However, the sample PACF shows a strong significant spike at the first lag (around 0.8), and the ACF decays very slowly.
+This clearly suggests that the series is still highly autocorrelated and requires further first-order differencing (d = 1).
+
+```{r}
+adf.test(na.omit(data_diff_12))
+kpss.test(na.omit(data_diff_12))
+lag.plot(na.omit(data_diff_12), lags = 1, do.lines = FALSE, 
+         main = "Wykres opóźnień (Lag-1) dla data_diff_12", 
+         col = "navyblue", pch = 16)
+```
+
+Although formal stationarity tests (ADF and KPSS) suggest that seasonal differencing alone might be sufficient, the lag plot reveals a strong, positive linear relationship between $Y_t$ and $Y_{t-1}$. This confirms the high autocorrelation (approx. 0.8) previously seen in the PACF plot. To ensure the stability of our SARIMA model and address this near-non-stationarity, we decided to apply an additional first-order difference ($d = 1$).
+
+```{r}
+data_diff_12_1<-diff(data_diff_12,lag=1)
+
+plot.ts(data_diff_12_1, main = 'lag-12 then lag-1 difference', col = 'navyblue', xlab = 'year', ylab = '');abline(h=mean(data_diff_12_1), col = 'darkred', lty = 2)
+par(mfrow=c(1,2))
+acf(na.omit(data_diff_12_1), lag.max = 36, main = 'lag-12 than lag-1 difference')
+pacf(na.omit(data_diff_12_1), lag.max = 36, main = '')
+```
+```{r}
+lag.plot(na.omit(data_diff_12_1), lags = 1, do.lines = FALSE, 
+         main = "Wykres opóźnień (Lag-1) dla data_diff_12", 
+         col = "navyblue", pch = 16)
+```
+
+
+```{r}
+adf.test(na.omit(data_diff_12_1))
+kpss.test(na.omit(data_diff_12_1))
+```
+The lag plot for the twice-differenced data now shows a random scatter of points, indicating that the correlation between consecutive observations is close to zero. Both the ADF and KPSS tests confirm that the series data_diff_12_1 is strictly stationary.
+
+The visual analysis of the fully differenced series supports the parameters $d = 1$ and $D = 1$. For the seasonal component, both the ACF and PACF plots cut off at lag $1s$, suggesting $P=0, Q=1$ or $P=1, Q=0$. For the non-seasonal component, the ACF cuts off at lag 1 and the PACF either cuts off at lag 1 or tails off slowly, pointing towards $p=0, q=1$ or $p=1, q=1$ as potential candidates.
+
+```{r}
+model_1 <- sarima(data, 0,1,1,0,1,1,12)
+model_2 <- sarima(data, 0,1,1,1,1,0,12)
+model_3 <- sarima(data, 0,1,1,1,1,1,12)
+model_4 <- sarima(data, 1,1,1,0,1,1,12)
+model_5 <- sarima(data, 1,1,1,1,1,0,12)
+model_6 <- sarima(data, 1,1,1,1,1,1,12)
+auto.arima(data)
+model_auto <- sarima(data, 0,1,1)
+```
+
+After considering AIC of each model, checking whether coefficients are significant and  residuals satisfy our assumptions, we concluded that the first model fits our data best.
+
+
+```{r}
+pred_1 <- sarima.for(data, n.ahead = 12,0,1,1,0,1,1,12)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Task 2
+
+
+The dataset **Sales of Shampoo over a Three Year Period** contains monthly shampoo sales observations for three consecutive years. It has 36 observations in total: one month identifier and one numerical sales value for each month. The data is available on Kaggle: <https://www.kaggle.com/datasets/djokester/sales-of-shampoo-over-a-three-year-period>.
+
+
+The goal of this project is to analyze the shampoo sales time series and transform it into a stationary series that can be treated as noise. First, the original data is plotted and checked for trend and seasonality. Then, transformations such as Box-Cox transformation, first differencing and seasonal differencing are applied. Finally, if the transformed series is stationary, an ARMA(p, q) model is selected for the stationary noise.
+
+
+
+
+
+## Load data
+
+
+```{r}
+shampoo = read.csv("sales-of-shampoo-over-a-three-ye.csv")
+shampoo_ts = ts(na.omit(shampoo[2]), start = c(1, 1), frequency = 12)
+head(shampoo,10)
+```
+
+
+
+## Function for adding month names to the plot
+
+```{r}
+month_names = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+plot_monthly_ts = function(x, main = NULL, ylab = NULL) {
+  plot(x, xaxt = "n", xlab = "Miesiąc", ylab = ylab, main = main)
+  axis(1,at = time(x),labels = month_names[cycle(x)],las = 2)
+}
+```
+
+```{r,fig.width=12, fig.height=7}
+plot_monthly_ts(shampoo_ts, main = "Sales of shampoo", ylab = "Sales")
+```
+
+```{r,fig.width=12, fig.height=7}
+par(mfrow = c(1,2))
+acf(shampoo_ts, lag.max = 40)
+pacf(shampoo_ts, lag.max=40)
+```
+
+The plot of the series shows a clear upward trend with maybe some seasonality, that is confirmed by the acf plot. This is clearly not white noise type of series.
+
+
+To transform the series into white noise, first we can try Box-Cox transformation.
+
+
+
+```{r}
+lambda = BoxCox.lambda(shampoo_ts)
+
+print(paste('Lambda used in BoxCox transformation is equal to:',round(lambda,4)))
+
+
+bc_sh = BoxCox(shampoo_ts, lambda = lambda)
+```
+```{r,fig.width=12, fig.height=10}
+par(mfrow = c(2,1))
+plot_monthly_ts(shampoo_ts, main = "Shampoo sales before Box-Cox", ylab = "Sales before Box-Cox")
+plot_monthly_ts(bc_sh, main = "Box-Cox transformed shampoo sales", ylab = "Sales after Box-Cox")
+
+```
+
+```{r,fig.width=12, fig.height=7}
+par(mfrow = c(1,2))
+acf(bc_sh, lag.max = 40)
+pacf(bc_sh, lag.max = 40)
+```
+
+It appears that Box-Cox transformation had no bigger effect on the data,which was expected since from the plot of the original series -  we cannot see variance increasing over time.
+
+
+# Trend/seasonality removal
+Periodogram
+
+
+
+
+```{r,fig.width=12, fig.height=7}
+n = length(bc_sh)
+Per= Mod(fft(bc_sh-mean(bc_sh)))^2/n  # 
+Freq = (1:n -1)/n
+plot(Freq[1:n], Per[1:n], type='h', lwd=2, ylab="Periodogram",
+     xlab="Frequency")    
+```
+
+```{r}
+nn=n/2
+y = cbind(1:nn, Freq[1:nn], 1/Freq[1:nn],Per[1:nn]); y[order(y[,4],decreasing = TRUE),] # another way to find the  peaks is to order by Per
+```
+
+We see some seasonality with 3 years cycle, 1.5 year and 1 year.
+
+
+
+
+We will try to remove trend - first using lag 1
+
+
+```{r,fig.width=12, fig.height=7}
+shampoo_diff = diff(bc_sh, lag=1)
+plot_monthly_ts(shampoo_diff, main = "Shampoo sales lag 1", ylab = "Sales")
+
+```
+
+```{r,fig.width=12, fig.height=10}
+par(mfrow = c(1,2))
+acf(shampoo_diff,lag.max = 40)
+pacf(shampoo_diff,lag.max = 40)
+
+```
+
+
+Now we remove yearly cycle
+
+```{r,fig.width=12, fig.height=7}
+shampoo_diff_12 = diff(shampoo_diff, lag =12)
+plot_monthly_ts(shampoo_diff_12, main = "Shampoo sales lag 12", ylab = "Sales")
+
+```
+
+
+
+```{r,fig.width=12, fig.height=10}
+par(mfrow = c(1,2))
+acf(shampoo_diff_12,lag.max = 40)
+pacf(shampoo_diff_12,lag.max = 40)
+```
+
+ADF Test
+```{r}
+adf.test(shampoo_diff_12)
+
+```
+The ADF test suggest that the data is stationary, so we will try to fit ARMA models
+
+
+# ARMA
+We will try to fit arma model by hand and using auto.arima, then we will compare it to the models we created manually
+
+
+
+```{r}
+
+arma_model_auto <- auto.arima(
+  shampoo_diff_12,
+  d = 0,
+  D = 0,
+  seasonal = FALSE,
+  stationary = TRUE,
+  stepwise = FALSE,
+  approximation = FALSE
+)
+
+arma_model_auto
+```
+
+
+
+
+
+We do not see clear cut off on ACF and PACF - both of them  so we will try multiple arma models.
+
+```{r}
+arma_model_1_1 <- arima(shampoo_diff_12,order = c(1,0,1))
+arma_model_1_2 <- arima(shampoo_diff_12,order = c(1,0,2))
+arma_model_1_3 <- arima(shampoo_diff_12,order = c(1,0,3))
+
+
+arma_model_2_1 <- arima(shampoo_diff_12,order = c(2,0,1))
+#arma_model_3_1 <- arima(shampoo_diff_12,order = c(3,0,1)) skip - auto arima already choose this model
+
+
+arma_model_2_2 <- arima(shampoo_diff_12,order = c(2,0,2))
+arma_model_3_3 <- arima(shampoo_diff_12,order = c(3,0,3))
+
+
+```
+
+
+
+
+# Testing the models
+
+AIC
+```{r}
+AIC_res <- AIC(arma_model_auto, arma_model_1_1, arma_model_1_2, arma_model_1_3,arma_model_2_1,arma_model_2_2,arma_model_3_3)
+AIC_res[order(AIC_res$AIC), ]
+```
+
+BIC
+```{r}
+BIC_res <- BIC(arma_model_auto, arma_model_1_1, arma_model_1_2, arma_model_1_3,arma_model_2_1,arma_model_2_2,arma_model_3_3)
+BIC_res[order(BIC_res$BIC), ]
+```
+
+Comparing 3 best
+
+```{r}
+arma_model_1_1
+```
+
+```{r,fig.width=12, fig.height=7}
+checkresiduals(arma_model_1_1)
+```
+
+
+```{r}
+arma_model_auto
+```
+
+```{r,fig.width=12, fig.height=7}
+checkresiduals(arma_model_auto)
+```
+
+```{r}
+arma_model_3_3
+```
+
+```{r,fig.width=12, fig.height=7}
+checkresiduals(arma_model_3_3)
+```
+
+
+
+
+Each of the models seems to fit pretty well:
+
+ - All three of the residual plots seem to be white noise
+ - ACF plots are situated between blue borders
+ - Histograms of residuals seem to be bell shaped
+ - Ljung-Box test pass with p value larger than 0.05, although model ARMA(3,0,3) had the lowest p value (0,09) - much smaller than for ARMA(3,0,1) - (0.67) 
+
+
+# Forecast
+
+```{r,fig.width=12, fig.height=10}
+future_1_1<-forecast(arma_model_1_1,h=12,level=95 )
+future_auto_3_1<-forecast(arma_model_auto,h=12,level=95 )
+future_3_3<-forecast(arma_model_3_3,h=12,level=95 )
+
+
+par(mfrow = c(3,1))
+
+
+plot(future_1_1)
+plot(future_auto_3_1)
+plot(future_3_3)
+```
+
+
+
+Model ARMA(3,0,1) seems to be the best fit for our dataset.
+$$\\[3in]$$
